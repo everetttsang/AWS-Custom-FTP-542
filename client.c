@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <math.h>
 
 void error(char *msg)
 {
@@ -29,7 +30,7 @@ int main(int argc, char *argv[])
        exit(0);
     }
     //open FILE
-    fp = fopen("test.txt", "r");
+    fp = fopen("download.jpeg", "r");
 
 
     fseek(fp, 0, SEEK_END);
@@ -67,27 +68,69 @@ int main(int argc, char *argv[])
     // printf("Message: %s\n", readBuff);
     // printf("Size: %d\n", file_size);
 
-
-
+    char file_size_str[256];
+    sprintf(file_size_str, "%d\n", file_size);
     printf("Filename: text.txt   |   Size: %d\n---------------------------\n ", file_size);
     printf("Please enter desired blocksize: ");
     bzero(block_size,256);
     fgets(block_size,255,stdin);
     printf("\nDesired Blocksize: %d\n",atoi(block_size));
+    int block_size_int = atoi(block_size);
     char temp[256];
 
+    //send blocksize
     n = write(sockfd,block_size ,256);
+    if (n<0) error("ERROR writing to socket");
 
-    n = write(sockfd,fileBuf,strlen(fileBuf));
-    if (n < 0)
-         error("ERROR writing to socket");
-    bzero(buffer,256);
-    n = read(sockfd,buffer,255);
-    if (n < 0)
-         error("ERROR reading from socket");
-   printf("%s\n",buffer);
+    n = read (sockfd, buffer, 256);
+    printf("%s\n", buffer);
 
-fclose(fp);
+
+    printf("Sending file size %s\n",file_size_str);//send file size
+    n =write (sockfd, file_size_str, 256);
+    if (n<0) error("ERROR writing to socket");
+
+    printf("Beigin writing file...\n");
+    int index =0;
+    int numblocks;
+    int caboose = file_size % block_size_int;
+    printf("Caboose %d\n",caboose);
+    numblocks = ceil((double) file_size / block_size_int);
+    printf("Num of blocks %d\n",numblocks);
+    index=0;
+    int start=0;
+    int end = block_size_int;
+    for(index=0; index<numblocks; index++){
+      // if(index == numblocks-1)
+      //   block_size_int=caboose;
+
+      char sendBuff[block_size_int];
+      printf("Start %d, End %d, \n", start, end);
+    //  bzero(sendBuff,strlen(sendBuff));
+
+      memcpy( sendBuff, fileBuf+(index*block_size_int), block_size_int);;
+      sendBuff[block_size_int]=0;
+
+      printf("Block %d: \n%s\n",index, sendBuff);
+      n = write(sockfd, sendBuff, block_size_int);
+      if (n<0) error("ERROR writing to socket");
+      //file_size = file_size-block_size_int;
+      //start=start+ block_size_int;
+
+
+
+
+    }
+
+
+    // bzero(buffer,256);
+    // n = read(sockfd,buffer,255);
+    // if (n < 0)
+    //      error("ERROR reading from socket");
+    // printf("%s\n",buffer);
+
+
+    fclose(fp);
     free(fileBuf);
     return 0;
 }

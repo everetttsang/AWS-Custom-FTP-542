@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <math.h>
 
 void error(char *msg)
 {
@@ -21,15 +22,25 @@ int getBlockSize(int sockfd){ //added dummy function to allow child processes to
   n = read(sockfd,buffer,500);
   if (n < 0) error("ERROR reading from socket");
   printf("Block Size: %s\n",buffer);
+
+  n = write(sockfd,"Block Size Receieved\n",256);
   return atoi(buffer);
-  //n = write(sockfd,"I got your message",18);
-  if (n < 0) error("ERROR writing to socket");
-  return 0;
+}
+
+void block_read(int sockfd, int buffer_size){
+  int n;
+  char buffer[buffer_size];
+  bzero(buffer, buffer_size);
+  n=read(sockfd,buffer,buffer_size);
+  if (n<0) error("ERROR reading from socket");
+  printf("%s\n", buffer);
+  return;
 }
 
 int main(int argc, char *argv[])
 {
     int n;
+
 
      //ignore SIGCHLD signal
      signal(SIGCHLD,SIG_IGN);
@@ -56,25 +67,63 @@ int main(int argc, char *argv[])
      listen(sockfd,5);
      clilen = sizeof(cli_addr);
 
+     FILE *fp;
+
+
      while(1){
        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-       if (newsockfd < 0)
-            error("ERROR on accept");
-       pid = fork();
-       if(pid<0)
-            error("ERROR on fork");
-      if(pid ==0){
+       // if (newsockfd < 0)
+       //      error("ERROR on accept");
+       // pid = fork();
+       // if(pid<0)
+       //      error("ERROR on fork");
+    //  if(pid ==0){
 
-        close(sockfd);
+
         int block_size;
+        char file_size[256];
+        int numblocks;
+        int caboose;
+
         block_size= getBlockSize(newsockfd);
-        printf("Block Size: %d", block_size);
-        exit(0);
-      }
-      else
+
+        bzero(file_size,256);
+        n = read (newsockfd, file_size, 256);
+        printf("File Size Received: %s\n", file_size);
+        numblocks = atoi(file_size);
+        caboose = numblocks % block_size;
+        printf("Caboose %d\n",caboose);
+        numblocks = ceil((double) numblocks / block_size);
+
+
+        printf("Expecting %d blocks\n",numblocks);
+        char readBuf[block_size];
+        int i=0;
+        for(i=0; i<numblocks; i++){
+          // if(i== numblocks -1) block_size = caboose;
+            fp = fopen("output.jpeg", "a");
+
+            bzero(readBuf, block_size);
+            n=read(newsockfd,readBuf ,block_size);
+            readBuf[block_size]=0;
+            if (n<0) error("ERROR reading from socket");
+            fputs(readBuf, fp);
+            printf("Received Message: %s\n", readBuf);
+            fclose(fp);
+        }
+        //while(1) block_read(newsockfd, block_size);
+
+
+
+
+      //  exit(0);
+      //}
+      //else
+
         close(newsockfd);
      }
-
+     fclose(fp);
+close(sockfd);
 
      return 0;
 }
