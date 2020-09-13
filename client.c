@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
        exit(0);
     }
     //open FILE
-    fp = fopen("download.jpeg", "r");
+    fp = fopen("test.txt", "r");
 
 
     fseek(fp, 0, SEEK_END);

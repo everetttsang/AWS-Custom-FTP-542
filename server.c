@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
         int i=0;
         for(i=0; i<numblocks; i++){
           // if(i== numblocks -1) block_size = caboose;
-            fp = fopen("output.jpeg", "a");
+            fp = fopen("output.txt", "a");
 
             bzero(readBuf, block_size);
             n=read(newsockfd,readBuf ,block_size);
