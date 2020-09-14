@@ -27,11 +27,7 @@ typedef struct control_packet{
 }control_packet;
 
 typedef struct data_packet{
-    //sequence number
     long int sequence_no;
-    //timestamp structure
-    //struct timestamp ts;
-    //block_size (data size)
     long int block_size;
     char payload[256];
 }data_packet;
@@ -90,6 +86,8 @@ void parse_control(struct control_packet *ctrl, char *buffer){
   printf("Filename: %s\n", fileName);
 
   //populate control datagram information
+  bzero(ctrl->file_name, strlen(ctrl->file_name));
+  bzero(ctrl->control_datagram, strlen(ctrl->control_datagram));
   strcpy(ctrl->control_datagram, buffer);
   strcpy(ctrl->file_name, fileName);
   ctrl->file_size= atoi(file_size);
@@ -113,7 +111,7 @@ void parse_data   (struct data_packet *data, char *buffer){
 
   bzero(sequence_no,256);
   bzero(block_size_buf,256);
-  bzero(payload, 256);
+  bzero(payload, strlen(payload));
   memcpy(sequence_no, buffer+1, 10);
   memcpy(block_size_buf, buffer+11,10);
   memcpy(payload, buffer+21,atoi(block_size_buf));
@@ -127,6 +125,7 @@ void parse_data   (struct data_packet *data, char *buffer){
 
   data->sequence_no = atoi(sequence_no);
   data->block_size = atoi(block_size_buf);
+  bzero(data->payload, strlen(data->payload));
   strcpy(data->payload, payload);
 
   printf("Sequence Number: %ld\nSequence Size: %ld\nPayload: %s\n", data->sequence_no, data->block_size,data->payload);
@@ -153,6 +152,8 @@ void assemble_ack(char* ack_packet, long int sequence_number){
     strcpy(ack_packet, buf);
   return;
 }
+
+
 int main(int argc, char *argv[])
 {
   int sockfd, new_fd; // listen on sock_fd, new connection on new_fd
@@ -171,6 +172,7 @@ int main(int argc, char *argv[])
   char buf[MAXDATASIZE];
   int numbytes;
   FILE *fp;
+  struct data_packet arr;
 
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_UNSPEC;
@@ -216,7 +218,50 @@ int main(int argc, char *argv[])
         exit(1);
       }
       printf("server: waiting for connections...\n");
-      while(1) { // main accept() loop
+
+      //need to do this once first
+      sin_size = sizeof their_addr;
+      new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+
+      inet_ntop(their_addr.ss_family,
+        get_in_addr((struct sockaddr *)&their_addr),
+        s, sizeof s);
+        struct data_packet data;
+          //receive first greeting from client
+          if ((numbytes = recv (new_fd, buf, MAXDATASIZE, 0))== -1){
+            //perror ("recv");
+            // exit(1);
+          }
+          else{
+          printf("Received Packet\n");
+          buf[numbytes] = '\0';
+          // printf("Server: received '%s'\n",buf);
+          strcpy(client, buf);
+          printf("Message: '%s'\n",client);
+          }
+
+
+
+          if(buf[0]=='0') //if control bit is 0, we've received a control packet
+          {
+            //parse the control Datagram
+            parse_control(&ctrl, client);
+            //send ACK
+            if (send(new_fd, "0000000000", MAXDATASIZE , 0) == -1)
+            perror("send");
+            printf("Send ACK to client\n");
+          }
+
+          long int numblocks = ceil((double) ctrl.file_size / ctrl.block_size_request);
+
+      struct data_packet store_info[numblocks+1];
+      int x;
+      for (x =0; x<=numblocks; x++){
+        bzero(store_info[x].payload, 256);
+      }
+
+      int done_flag=0;
+      while(done_flag==0) { // main accept() loop
         sin_size = sizeof their_addr;
         new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
 
@@ -235,7 +280,7 @@ int main(int argc, char *argv[])
             // printf("Server: received '%s'\n",buf);
             strcpy(client, buf);
             printf("Message: '%s'\n",client);
-
+            }
 
 
 
@@ -253,9 +298,18 @@ int main(int argc, char *argv[])
               //parse and store datagram
               parse_data(&data, client);
 
-              fp = fopen(ctrl.file_name, "a");
-              fputs(data.payload, fp);
-              fclose(fp);
+              //populate the data storage array
+              store_info[data.sequence_no].sequence_no = data.sequence_no;
+              store_info[data.sequence_no].block_size = data.block_size;
+              bzero(store_info[data.sequence_no].payload, strlen(store_info[data.sequence_no].payload));
+              strcpy(store_info[data.sequence_no].payload, data.payload);
+              if(store_info[data.sequence_no].sequence_no==20){
+                printf("Data Payload %s\n", data.payload);
+                printf("StoreInfo Payload %s\n",store_info[data.sequence_no].payload );
+              }
+              // fp = fopen(ctrl.file_name, "a");
+              // fputs(data.payload, fp);
+              // fclose(fp);
 
               char ack_buf[256];
               assemble_ack(ack_buf, data.sequence_no);
@@ -265,11 +319,46 @@ int main(int argc, char *argv[])
               printf("Send ACK to client: %s\n", ack_buf);
             }
 
+            //LOOP TO CHECK IF FULLY POPULATED
+            int j;
+            int populated=0;
+            for (j=1; j<=numblocks; j++){
+              if(store_info[j].sequence_no==0){
+                done_flag=0;
+              }
+              else{
+                populated = populated+1;
+              }
+            }
+            if (populated == numblocks){
+              done_flag=1;
+
+              //write
+              int i;
+              int j;
+              for(i=1; i<=numblocks; i++){
+                for(j=1; j<=numblocks; j++){
+                  //printf("Sequence Number %ld\n",store_info[j].sequence_no);
+                  if(store_info[j].sequence_no == i){
+                    fp = fopen(ctrl.file_name, "a");
+                    char tempBuf[256];
+                    strcpy(tempBuf, store_info[j].payload);
+                    fputs(tempBuf, fp);
+                    fclose(fp);
+                    //printf("%s\n", store_info[j].payload);
+                  }
+                }
+              }
+              printf("Sequence 20 Payload: %s\n", store_info[20].payload);
+            }
+
+
+
             bzero(buf, strlen(buf));
           }
 
 
-        }
+
         close (sockfd);
         close(new_fd);
         return 0;

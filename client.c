@@ -235,11 +235,11 @@ int main(int argc, char *argv[])
 
   int block_size_int = ctrl.block_size_request;
   int index =0;
-  int numblocks;
+  long int numblocks;
   int caboose = ctrl.file_size % block_size_int;
   printf("Caboose %d\n",caboose);
   numblocks = ceil((double) ctrl.file_size / block_size_int);
-  printf("Num of blocks %d\n",numblocks);
+  printf("Num of blocks %ld\n",numblocks);
   struct ack_packet arr_ack[numblocks+1];
   int i=0;
   for(i=0; i<= numblocks;i++){
