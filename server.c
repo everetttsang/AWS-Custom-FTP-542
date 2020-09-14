@@ -9,21 +9,22 @@
 #include <unistd.h>
 #include <signal.h>
 #include <math.h>
+#include <sys/time.h>
 
 void error(char *msg)
 {
     perror(msg);
     exit(1);
 }
-int getBlockSize(int sockfd){ //added dummy function to allow child processes to continue handling messages
+int getControlData(int sockfd){ //added dummy function to allow child processes to continue handling messages
   int n;
-  char buffer[500];
-  bzero(buffer,500);
-  n = read(sockfd,buffer,500);
+  char buffer[31];
+  bzero(buffer,31);
+  n = read(sockfd,buffer,31);
   if (n < 0) error("ERROR reading from socket");
   printf("Block Size: %s\n",buffer);
 
-  n = write(sockfd,"Block Size Receieved\n",256);
+  //n = write(sockfd,"Block Size Receieved\n",256);
   return atoi(buffer);
 }
 
@@ -40,7 +41,7 @@ void block_read(int sockfd, int buffer_size){
 int main(int argc, char *argv[])
 {
     int n;
-
+    struct timeval tv;
 
      //ignore SIGCHLD signal
      signal(SIGCHLD,SIG_IGN);
@@ -81,30 +82,56 @@ int main(int argc, char *argv[])
 
 
         int block_size;
+        char block_size_buf[256];
         char file_size[256];
         int numblocks;
         int caboose;
+        char control_datagram[31];
+        char fileName[256];
 
-        block_size= getBlockSize(newsockfd);
+        //receive controldatagram
+        n=read(newsockfd,control_datagram ,31);
+        printf("Control datagram received: %s\n",control_datagram);
 
+        //parse control datagram
+        bzero(fileName,256);
         bzero(file_size,256);
-        n = read (newsockfd, file_size, 256);
-        printf("File Size Received: %s\n", file_size);
+        bzero(block_size_buf,256);
+        memcpy(fileName, control_datagram+1, 10);
+        memcpy(file_size, control_datagram+11,10);
+        memcpy(block_size_buf, control_datagram+21,10);
+
+        printf("Filename: %s\nFile Size: %s\nBlock Size Requested: %s\n", fileName,file_size, block_size_buf);
+        block_size= atoi(block_size_buf);
+
         numblocks = atoi(file_size);
         caboose = numblocks % block_size;
         printf("Caboose %d\n",caboose);
         numblocks = ceil((double) numblocks / block_size);
 
+        //remove zero pad
+        int i;
+        int nameIndex=0;
+        for (i=0; i< strlen(fileName); i++){
+          if(fileName[i]=='0')nameIndex= nameIndex+1;
+
+        }
+        char buffTemp[256];
+        memcpy(buffTemp, fileName+nameIndex, strlen(fileName)-nameIndex);
+        strcpy(fileName, buffTemp);
+        printf("Filename: %s\n", fileName);
 
         printf("Expecting %d blocks\n",numblocks);
         char readBuf[block_size];
-        int i=0;
+        i=0;
         for(i=0; i<numblocks; i++){
           // if(i== numblocks -1) block_size = caboose;
-            fp = fopen("output.txt", "a");
+            fp = fopen(fileName, "a");
 
             bzero(readBuf, block_size);
             n=read(newsockfd,readBuf ,block_size);
+            gettimeofday(&tv, NULL);
+            printf("Received: %d\n", tv.tv_usec);
             readBuf[block_size]=0;
             if (n<0) error("ERROR reading from socket");
             fputs(readBuf, fp);
