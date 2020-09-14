@@ -20,6 +20,8 @@ typedef struct control_packet{
     char file_name[256];
     long int file_size;
     long int block_size_request;
+    char source_addr[256];
+    char port_no[256];
 }control_packet;
 
 
@@ -50,7 +52,7 @@ char* padLeft(char* str, int size){
   return buffer;
 }
 void assemble_control(struct control_packet *ctrl){
-    //control packet size: [1 ctrl bit][15 filename][256 blocksize][256 filesize], total 528
+    //control packet size: [1 ctrl bit][10 filename][10 blocksize][10 filesize][15 Source_Addr][5 Port_No], total 548
 
     char tempFileSize[256];
     char tempBlockSize[256];
