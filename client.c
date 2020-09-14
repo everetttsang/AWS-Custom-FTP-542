@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <math.h>
+#include <sys/time.h>
 #define PORT "21236" // the port client will be connecting to
 #define MAXDATASIZE 256 // max number of bytes we can get at once
 // get sockaddr, IPv4 or IPv6:
@@ -22,7 +23,9 @@ typedef struct control_packet{
     char file_name[256];
     long int file_size;
     long int block_size_request;
+    struct timeval ts;
 }control_packet;
+
 
 typedef struct ack_packet{
     long int sequence_number;
@@ -196,10 +199,6 @@ int talk(char* buffer, struct ack_packet ack[]){
   return 0;
 }
 
-void retransmit(struct ack_packet arr[]){
-
-
-}
 int main(int argc, char *argv[])
 {
   char filename[256];
@@ -266,13 +265,55 @@ int main(int argc, char *argv[])
   for(index=0; index<numblocks; index++){
     char datagram[256];
     char payload[block_size_int];
+    char ts_buf[256];
     memcpy( payload, fileBuf+(index*block_size_int), block_size_int);;
     payload[block_size_int]='\0';
 
     printf("Block %d: \n%s\nPayload Size: %ld\n",index+1, payload,strlen(payload));
 
+
     assemble_data(index+1, datagram, strlen(payload), payload);
-    talk(datagram, arr_ack);
+
+    //take time stamp and assemble into a packet
+    if(index==0){
+
+      char seq[256];
+      char numbytes_buf[256];
+      char numbytes_temp[256];
+      talk(datagram, arr_ack);
+      gettimeofday(&ctrl.ts, NULL);
+      printf("Timestamp %d\n",ctrl.ts.tv_usec);
+      sprintf(seq, "%d", ctrl.ts.tv_usec);
+      //sprintf(numbytes_temp, "%ld",numblocks+1);
+      strcpy(ts_buf, "2");
+      // if(strlen(numbytes_temp) <10){
+      //   int addZeros=10-strlen(numbytes_temp);
+      //   int y=0;
+      //   for (y=0; y<addZeros; y++){
+      //     strcat(numbytes_buf,"0");
+      //   }
+      // }
+      // strcat(numbytes_buf,numbytes_temp);
+      // strcat(ts_buf, numbytes_buf);
+      if(strlen(seq) <10){
+        int addZeros=10-strlen(seq);
+        int y=0;
+        for (y=0; y<addZeros; y++){
+          strcat(ts_buf,"0");
+        }
+      }
+      strcat(ts_buf, seq);
+
+
+
+      printf("Timestamp Packet: %s\nSize: %ld\n", ts_buf, strlen(ts_buf));
+      arr_ack[numblocks+1].sequence_number = numblocks+1;
+      talk(ts_buf, arr_ack);
+    }else{
+      talk(datagram, arr_ack);
+    }
+
+
   }
 
   int allAck = 0;

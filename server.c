@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <sys/time.h>
 #define PORT "21236" // the port users will be connecting to
 #define BACKLOG 256 // how many pending connections queue will hold
 #define MAXDATASIZE 256
@@ -24,6 +25,8 @@ typedef struct control_packet{
     char file_name[256];
     long int file_size;
     long int block_size_request;
+    long int time_recv;
+    struct timeval ts;
 }control_packet;
 
 typedef struct data_packet{
@@ -129,6 +132,28 @@ void parse_data   (struct data_packet *data, char *buffer){
   strcpy(data->payload, payload);
 
   printf("Sequence Number: %ld\nSequence Size: %ld\nPayload: %s\n", data->sequence_no, data->block_size,data->payload);
+
+
+  return;
+}
+
+void parse_ts   (struct control_packet *ctrl, char* buffer){
+  printf("Buffer contents: %s\n", buffer);
+
+//  char sequence_no[256];
+  char time_stamp[256];
+  char ts_buf[256];
+
+  bzero(time_stamp,256);
+  //bzero(time_stamp, strlen(time_stamp));
+  memcpy(time_stamp, buffer+1, 10);
+  //memcpy(time_stamp, buffer+11,10);
+
+
+
+  ctrl->time_recv = atoi(time_stamp);
+
+  printf("Timesent Packet Received: %ld\n",ctrl->time_recv);
 
 
   return;
@@ -275,7 +300,10 @@ int main(int argc, char *argv[])
               // exit(1);
             }
             else{
-            printf("Received Packet\n");
+            gettimeofday(&ctrl.ts, NULL);
+            printf("Received Packet-------------\n");
+            printf("Received Timestamp %d\n", ctrl.ts.tv_usec);
+
             buf[numbytes] = '\0';
             // printf("Server: received '%s'\n",buf);
             strcpy(client, buf);
@@ -319,7 +347,18 @@ int main(int argc, char *argv[])
               printf("Send ACK to client: %s\n", ack_buf);
             }
 
+            if(buf[0]=='2'){
+              //parse timestamp Pack
+              parse_ts(&ctrl, client);
+              char ack_buf[256];
+              assemble_ack(ack_buf, numbytes+1);
+              if (send(new_fd, ack_buf, MAXDATASIZE , 0) == -1)
+              perror("send");
+              printf("Send ACK to client: %s\n", ack_buf);
+            }
+
             //LOOP TO CHECK IF FULLY POPULATED
+            //WRITE TO FILE IF FULLY POPULATED
             int j;
             int populated=0;
             for (j=1; j<=numblocks; j++){
@@ -351,7 +390,8 @@ int main(int argc, char *argv[])
               }
               printf("Sequence 20 Payload: %s\n", store_info[20].payload);
             }
-
+            printf("-----------------------FILE TRANSFER COMPLETE-----------\n");
+            printf("Time began %ld \t::\t Time end %d\n",ctrl.time_recv, ctrl.ts.tv_usec);
 
 
             bzero(buf, strlen(buf));
